@@ -1,1 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>合格を書いてみよう！</title>
+<style>
+  body {
+    font-family: sans-serif;
+    background: #f4f4f4;
+    text-align: center;
+  }
+  h1 {
+    margin: 20px;
+  }
 
+  .row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin: 20px 0;
+  }
+
+  img, canvas {
+    border: 2px solid #000;
+    background: #fff;
+  }
+
+  button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin: 10px;
+  }
+
+  #result {
+    font-size: 22px;
+    font-weight: bold;
+    margin-top: 20px;
+  }
+
+  .hidden {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<h1>「合格」を書いてみよう！</h1>
+
+<!-- STEP 1：お手本を見る -->
+<div id="step1">
+  <p>まずはお手本をよく見て覚えましょう</p>
+  <div class="row">
+    <img src="model_go.png" width="300" height="300">
+    <img src="model_kaku.png" width="300" height="300">
+  </div>
+  <button onclick="goToStep2()">書いてみる</button>
+</div>
+
+<!-- STEP 2：書く -->
+<div id="step2" class="hidden">
+  <p>お手本を見ずに書いてください</p>
+
+  <div class="row">
+    <canvas id="go" width="300" height="300"></canvas>
+    <canvas id="kaku" width="300" height="300"></canvas>
+  </div>
+
+  <button onclick="judge()">判定</button>
+  <button onclick="resetCanvas()">リセット</button>
+</div>
+
+<!-- 結果 -->
+<div id="result"></div>
+
+<script>
+// ===============================
+// ステップ切り替え
+// ===============================
+function goToStep2() {
+  document.getElementById("step1").classList.add("hidden");
+  document.getElementById("step2").classList.remove("hidden");
+}
+
+// ===============================
+// Canvas描画設定
+// ===============================
+function setupCanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "black";
+
+  let drawing = false;
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    return { x: e.offsetX, y: e.offsetY };
+  }
+
+  canvas.addEventListener("mousedown", e => {
+    drawing = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  });
+
+  canvas.addEventListener("mousemove", e => {
+    if (!drawing) return;
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+
+  canvas.addEventListener("mouseup", () => drawing = false);
+  canvas.addEventListener("mouseleave", () => drawing = false);
+
+  canvas.addEventListener("touchstart", e => {
+    drawing = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  });
+
+  canvas.addEventListener("touchmove", e => {
+    if (!drawing) return;
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+
+  canvas.addEventListener("touchend", () => drawing = false);
+
+  return ctx;
+}
+
+const goCtx = setupCanvas(document.getElementById("go"));
+const kakuCtx = setupCanvas(document.getElementById("kaku"));
+
+// ===============================
+// 画像正規化（白黒）
+// ===============================
+function normalize(imageData) {
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const v = imageData.data[i];
+    const bw = v < 200 ? 0 : 255;
+    imageData.data[i] =
+    imageData.data[i + 1] =
+    imageData.data[i + 2] = bw;
+  }
+  return imageData;
+}
+
+// ===============================
+// スコア計算
+// ===============================
+function calcScore(ctx, modelSrc) {
+  const user = normalize(ctx.getImageData(0, 0, 300, 300));
+
+  const tmp = document.createElement("canvas");
+  tmp.width = 300;
+  tmp.height = 300;
+  const tctx = tmp.getContext("2d");
+
+  const img = new Image();
+  img.src = modelSrc;
+  tctx.drawImage(img, 0, 0, 300, 300);
+
+  const model = normalize(tctx.getImageData(0, 0, 300, 300));
+
+  let hit = 0;
+  let total = 0;
+
+  for (let i = 0; i < model.data.length; i += 4) {
+    if (model.data[i] === 0) {
+      total++;
+      if (user.data[i] === 0) hit++;
+    }
+  }
+
+  return Math.floor((hit / total) * 100);
+}
+
+// ===============================
+// 判定＋ランク
+// ===============================
+function judge() {
+  const goScore = calcScore(goCtx, "model_go.png");
+  const kakuScore = calcScore(kakuCtx, "model_kaku.png");
+  const avg = Math.floor((goScore + kakuScore) / 2);
+
+  let rank = "";
+  let color = "";
+
+  if (avg >= 95) {
+    rank = "S";
+    color = "gold";
+  } else if (avg >= 80) {
+    rank = "A";
+    color = "green";
+  } else if (avg >= 65) {
+    rank = "B";
+    color = "orange";
+  } else {
+    rank = "C";
+    color = "red";
+  }
+
+  const result = document.getElementById("result");
+  result.innerHTML = `
+    合：${goScore}% ／ 格：${kakuScore}%<br>
+    平均：${avg}%<br>
+    ランク：<span style="font-size:36px;">${rank}</span>
+  `;
+  result.style.color = color;
+}
+
+// ===============================
+// リセット
+// ===============================
+function resetCanvas() {
+  goCtx.clearRect(0, 0, 300, 300);
+  kakuCtx.clearRect(0, 0, 300, 300);
+  document.getElementById("result").textContent = "";
+}
+</script>
+
+</body>
+</html>
