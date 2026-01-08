@@ -2,231 +2,115 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>合格を書いてみよう！</title>
-
-<!-- スマホのズーム・スクロール抑制 -->
+<title>合格を書いてみよう</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
+<!-- Firebase SDK（scriptタグ方式） -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden; /* ← ページスクロール完全停止 */
-    background: #f4f4f4;
-    font-family: sans-serif;
-    text-align: center;
-  }
-
-  h1 {
-    margin: 16px 0;
-  }
-
-  .row {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin: 20px 0;
-  }
-
-  img, canvas {
-    width: 300px;
-    height: 300px;
-    background: #fff;
-    border: 2px solid #000;
-  }
-
-  canvas {
-    touch-action: none; /* ← 超重要：指スクロール無効 */
-  }
-
-  button {
-    padding: 10px 20px;
-    font-size: 16px;
-    margin: 8px;
-  }
-
-  #result {
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 10px;
-  }
-
-  .hidden {
-    display: none;
-  }
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: sans-serif;
+  text-align: center;
+}
+canvas {
+  border: 2px solid black;
+  touch-action: none;
+}
 </style>
 </head>
+
 <body>
 
 <h1>「合格」を書いてみよう！</h1>
 
-<!-- STEP1：お手本 -->
-<div id="step1">
-  <p>お手本をよく見て覚えましょう</p>
-  <div class="row">
-    <img src="model_go.png" alt="合 お手本">
-    <img src="model_kaku.png" alt="格 お手本">
-  </div>
-  <button onclick="goToStep2()">書いてみる</button>
+<div>
+  ニックネーム：
+  <input id="nickname" maxlength="10" placeholder="10文字以内">
 </div>
 
-<!-- STEP2：書く -->
-<div id="step2" class="hidden">
-  <p>お手本を見ずに書いてください</p>
-  <div class="row">
-    <canvas id="go" width="300" height="300"></canvas>
-    <canvas id="kaku" width="300" height="300"></canvas>
-  </div>
-  <button onclick="judge()">判定</button>
-  <button onclick="resetCanvas()">リセット</button>
-</div>
+<canvas id="go" width="300" height="300"></canvas>
+<br>
+<button onclick="judge()">判定</button>
 
-<div id="result"></div>
+<h2>🏆 ランキング</h2>
+<ul id="ranking"></ul>
 
 <script>
-// =====================
-// ステップ切り替え
-// =====================
-function goToStep2() {
-  document.getElementById("step1").classList.add("hidden");
-  document.getElementById("step2").classList.remove("hidden");
-}
+/* =====================
+   Firebase 初期化
+===================== */
 
-// =====================
-// Canvas描画（スクロール完全防止）
-// =====================
-function setupCanvas(canvas) {
-  const ctx = canvas.getContext("2d");
-  ctx.lineWidth = 6;
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "black";
+const firebaseConfig = {
+  apiKey: "AIzaSyDuvDzmbIigTcXYqxN1dkLDg793sUy3src",
+  authDomain: "go-kaku.firebaseapp.com",
+  projectId: "go-kaku",
+  storageBucket: "go-kaku.firebasestorage.app",
+  messagingSenderId: "373881843090",
+  appId: "1:373881843090:web:d30e6265d809034e62654b",
+  measurementId: "G-RWSGKGVCQY"
+};
 
-  let drawing = false;
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
-  function pos(e) {
-    const r = canvas.getBoundingClientRect();
-    if (e.touches) {
-      return {
-        x: e.touches[0].clientX - r.left,
-        y: e.touches[0].clientY - r.top
-      };
+/* =====================
+   ニックネーム取得
+===================== */
+function getNickname() {
+  let name = localStorage.getItem("nickname");
+  if (!name) {
+    name = document.getElementById("nickname").value.trim();
+    if (!name) {
+      alert("ニックネームを入力してください");
+      throw new Error("no name");
     }
-    return { x: e.offsetX, y: e.offsetY };
+    localStorage.setItem("nickname", name);
   }
-
-  function start(e) {
-    e.preventDefault();
-    drawing = true;
-    const p = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-  }
-
-  function move(e) {
-    e.preventDefault();
-    if (!drawing) return;
-    const p = pos(e);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-  }
-
-  function end(e) {
-    e.preventDefault();
-    drawing = false;
-  }
-
-  canvas.addEventListener("mousedown", start);
-  canvas.addEventListener("mousemove", move);
-  canvas.addEventListener("mouseup", end);
-  canvas.addEventListener("mouseleave", end);
-
-  canvas.addEventListener("touchstart", start, { passive: false });
-  canvas.addEventListener("touchmove", move, { passive: false });
-  canvas.addEventListener("touchend", end, { passive: false });
-
-  return ctx;
+  return name;
 }
 
-const goCtx = setupCanvas(document.getElementById("go"));
-const kakuCtx = setupCanvas(document.getElementById("kaku"));
-
-// =====================
-// 画像正規化
-// =====================
-function normalize(img) {
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = img.data[i];
-    const bw = v < 200 ? 0 : 255;
-    img.data[i] = img.data[i+1] = img.data[i+2] = bw;
-  }
-  return img;
-}
-
-// =====================
-// スコア計算（画像ロード保証）
-// =====================
-function calcScore(ctx, modelSrc, callback) {
-  const user = normalize(ctx.getImageData(0,0,300,300));
-
-  const img = new Image();
-  img.onload = () => {
-    const tmp = document.createElement("canvas");
-    tmp.width = 300;
-    tmp.height = 300;
-    const tctx = tmp.getContext("2d");
-    tctx.drawImage(img, 0, 0, 300, 300);
-
-    const model = normalize(tctx.getImageData(0,0,300,300));
-
-    let hit = 0, total = 0;
-    for (let i = 0; i < model.data.length; i += 4) {
-      if (model.data[i] === 0) {
-        total++;
-        if (user.data[i] === 0) hit++;
-      }
-    }
-    callback(Math.floor(hit / total * 100));
-  };
-  img.onerror = () => {
-    alert("お手本画像が読み込めません。ファイル名を確認してください。");
-  };
-  img.src = modelSrc;
-}
-
-// =====================
-// 判定＋ランク
-// =====================
+/* =====================
+   仮のスコア送信
+===================== */
 function judge() {
-  calcScore(goCtx, "model_go.png", goScore => {
-    calcScore(kakuCtx, "model_kaku.png", kakuScore => {
-      const avg = Math.floor((goScore + kakuScore) / 2);
+  const score = Math.floor(Math.random() * 40) + 60; // テスト用
+  const rank = score >= 95 ? "S" :
+               score >= 80 ? "A" :
+               score >= 65 ? "B" : "C";
 
-      let rank, color;
-      if (avg >= 95) { rank = "S"; color = "gold"; }
-      else if (avg >= 80) { rank = "A"; color = "green"; }
-      else if (avg >= 65) { rank = "B"; color = "orange"; }
-      else { rank = "C"; color = "red"; }
+  const name = getNickname();
 
-      const r = document.getElementById("result");
-      r.innerHTML = `
-        合：${goScore}% ／ 格：${kakuScore}%<br>
-        平均：${avg}%<br>
-        ランク：<span style="font-size:36px">${rank}</span>
-      `;
-      r.style.color = color;
+  db.collection("scores").doc(name).set({
+    name: name,
+    score: score,
+    rank: rank,
+    updated: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  alert(`${score}%（${rank}）で送信しました`);
+}
+
+/* =====================
+   ランキング表示
+===================== */
+db.collection("scores")
+  .orderBy("score", "desc")
+  .limit(5)
+  .onSnapshot(snapshot => {
+    const ul = document.getElementById("ranking");
+    ul.innerHTML = "";
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      const li = document.createElement("li");
+      li.textContent = `${d.name}：${d.score}%（${d.rank}）`;
+      ul.appendChild(li);
     });
   });
-}
-
-// =====================
-// リセット
-// =====================
-function resetCanvas() {
-  goCtx.clearRect(0,0,300,300);
-  kakuCtx.clearRect(0,0,300,300);
-  document.getElementById("result").textContent = "";
-}
 </script>
 
 </body>
