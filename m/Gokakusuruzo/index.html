@@ -4,32 +4,18 @@
 <meta charset="UTF-8">
 <title>合格チャレンジ</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
 <style>
-html,body{
-  margin:0;
-  overflow:hidden;
-  font-family:sans-serif;
-  text-align:center;
-}
-canvas,img{
-  width:300px;
-  height:300px;
-  border:2px solid #000;
-  background:#fff;
-}
+html,body{margin:0;overflow:hidden;font-family:sans-serif;text-align:center;}
+canvas,img{width:300px;height:300px;border:2px solid #000;background:#fff;}
 canvas{touch-action:none;}
 .row{display:flex;justify-content:center;gap:10px;}
 .hidden{display:none;}
-button,select{font-size:16px;margin:6px;}
 </style>
 </head>
-
 <body>
 
-<h2>「合格」を書いてみよう</h2>
+<h2>「合格」を書こう</h2>
 
-難易度：
 <select id="difficulty">
   <option value="easy">EASY</option>
   <option value="normal" selected>NORMAL</option>
@@ -57,14 +43,14 @@ button,select{font-size:16px;margin:6px;}
 <script>
 function setup(c){
   const ctx=c.getContext("2d");
-  ctx.lineWidth=8;              // ★太くする（重要）
+  ctx.lineWidth=8;
   ctx.lineCap="round";
   let d=false;
 
   function p(e){
     const r=c.getBoundingClientRect();
     const t=e.touches?e.touches[0]:e;
-    return {x:(t.clientX-r.left),y:(t.clientY-r.top)};
+    return {x:t.clientX-r.left,y:t.clientY-r.top};
   }
 
   function s(e){e.preventDefault();d=true;const q=p(e);ctx.beginPath();ctx.moveTo(q.x,q.y);}
@@ -84,13 +70,23 @@ function setup(c){
 const goCtx=setup(go);
 const kaCtx=setup(kaku);
 
-function getRadius(){
+function radius(){
   return difficulty.value==="easy"?6:
          difficulty.value==="hard"?2:4;
 }
 
+function ink(img){
+  let c=0;
+  for(let i=0;i<img.data.length;i+=4){
+    if(img.data[i]<200) c++;
+  }
+  return c;
+}
+
 function score(ctx,src,cb){
   const u=ctx.getImageData(0,0,300,300);
+  if(ink(u)<400){ cb(0); return; } // ★最重要
+
   const img=new Image();
   img.onload=()=>{
     const c=document.createElement("canvas");
@@ -100,26 +96,27 @@ function score(ctx,src,cb){
     const m=t.getImageData(0,0,300,300);
 
     let hit=0,total=0;
-    const r=getRadius();
+    const r=radius();
 
     for(let y=0;y<300;y+=2){
       for(let x=0;x<300;x+=2){
         const i=(y*300+x)*4;
         if(m.data[i]<200){
           total++;
-          for(let dy=-r;dy<=r;dy++){
+          let ok=false;
+          for(let dy=-r;dy<=r&&!ok;dy++){
             for(let dx=-r;dx<=r;dx++){
               const nx=x+dx,ny=y+dy;
               if(nx<0||ny<0||nx>=300||ny>=300)continue;
               const ni=(ny*300+nx)*4;
-              if(u.data[ni]<200){hit++;dy=dx=99;}
+              if(u.data[ni]<200){ok=true;break;}
             }
           }
+          if(ok) hit++;
         }
       }
     }
-
-    cb(Math.min(100,Math.floor(hit/total*100)));
+    cb(Math.floor(hit/total*100));
   };
   img.src=src;
 }
