@@ -3,14 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <title>合格を書いてみよう！</title>
+
+<!-- スマホのズーム・スクロール抑制 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
 <style>
-  body {
-    font-family: sans-serif;
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden; /* ← ページスクロール完全停止 */
     background: #f4f4f4;
+    font-family: sans-serif;
     text-align: center;
   }
+
   h1 {
-    margin: 20px;
+    margin: 16px 0;
   }
 
   .row {
@@ -21,20 +30,26 @@
   }
 
   img, canvas {
-    border: 2px solid #000;
+    width: 300px;
+    height: 300px;
     background: #fff;
+    border: 2px solid #000;
+  }
+
+  canvas {
+    touch-action: none; /* ← 超重要：指スクロール無効 */
   }
 
   button {
     padding: 10px 20px;
     font-size: 16px;
-    margin: 10px;
+    margin: 8px;
   }
 
   #result {
     font-size: 22px;
     font-weight: bold;
-    margin-top: 20px;
+    margin-top: 10px;
   }
 
   .hidden {
@@ -46,44 +61,41 @@
 
 <h1>「合格」を書いてみよう！</h1>
 
-<!-- STEP 1：お手本を見る -->
+<!-- STEP1：お手本 -->
 <div id="step1">
-  <p>まずはお手本をよく見て覚えましょう</p>
+  <p>お手本をよく見て覚えましょう</p>
   <div class="row">
-    <img src="model_go.png" width="300" height="300">
-    <img src="model_kaku.png" width="300" height="300">
+    <img src="model_go.png" alt="合 お手本">
+    <img src="model_kaku.png" alt="格 お手本">
   </div>
   <button onclick="goToStep2()">書いてみる</button>
 </div>
 
-<!-- STEP 2：書く -->
+<!-- STEP2：書く -->
 <div id="step2" class="hidden">
   <p>お手本を見ずに書いてください</p>
-
   <div class="row">
     <canvas id="go" width="300" height="300"></canvas>
     <canvas id="kaku" width="300" height="300"></canvas>
   </div>
-
   <button onclick="judge()">判定</button>
   <button onclick="resetCanvas()">リセット</button>
 </div>
 
-<!-- 結果 -->
 <div id="result"></div>
 
 <script>
-// ===============================
+// =====================
 // ステップ切り替え
-// ===============================
+// =====================
 function goToStep2() {
   document.getElementById("step1").classList.add("hidden");
   document.getElementById("step2").classList.remove("hidden");
 }
 
-// ===============================
-// Canvas描画設定
-// ===============================
+// =====================
+// Canvas描画（スクロール完全防止）
+// =====================
 function setupCanvas(canvas) {
   const ctx = canvas.getContext("2d");
   ctx.lineWidth = 6;
@@ -92,49 +104,46 @@ function setupCanvas(canvas) {
 
   let drawing = false;
 
-  function getPos(e) {
-    const rect = canvas.getBoundingClientRect();
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
     if (e.touches) {
       return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top
+        x: e.touches[0].clientX - r.left,
+        y: e.touches[0].clientY - r.top
       };
     }
     return { x: e.offsetX, y: e.offsetY };
   }
 
-  canvas.addEventListener("mousedown", e => {
+  function start(e) {
+    e.preventDefault();
     drawing = true;
-    const p = getPos(e);
+    const p = pos(e);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-  });
+  }
 
-  canvas.addEventListener("mousemove", e => {
+  function move(e) {
+    e.preventDefault();
     if (!drawing) return;
-    const p = getPos(e);
+    const p = pos(e);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
-  });
+  }
 
-  canvas.addEventListener("mouseup", () => drawing = false);
-  canvas.addEventListener("mouseleave", () => drawing = false);
+  function end(e) {
+    e.preventDefault();
+    drawing = false;
+  }
 
-  canvas.addEventListener("touchstart", e => {
-    drawing = true;
-    const p = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-  });
+  canvas.addEventListener("mousedown", start);
+  canvas.addEventListener("mousemove", move);
+  canvas.addEventListener("mouseup", end);
+  canvas.addEventListener("mouseleave", end);
 
-  canvas.addEventListener("touchmove", e => {
-    if (!drawing) return;
-    const p = getPos(e);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-  });
-
-  canvas.addEventListener("touchend", () => drawing = false);
+  canvas.addEventListener("touchstart", start, { passive: false });
+  canvas.addEventListener("touchmove", move, { passive: false });
+  canvas.addEventListener("touchend", end, { passive: false });
 
   return ctx;
 }
@@ -142,90 +151,80 @@ function setupCanvas(canvas) {
 const goCtx = setupCanvas(document.getElementById("go"));
 const kakuCtx = setupCanvas(document.getElementById("kaku"));
 
-// ===============================
-// 画像正規化（白黒）
-// ===============================
-function normalize(imageData) {
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    const v = imageData.data[i];
+// =====================
+// 画像正規化
+// =====================
+function normalize(img) {
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = img.data[i];
     const bw = v < 200 ? 0 : 255;
-    imageData.data[i] =
-    imageData.data[i + 1] =
-    imageData.data[i + 2] = bw;
+    img.data[i] = img.data[i+1] = img.data[i+2] = bw;
   }
-  return imageData;
+  return img;
 }
 
-// ===============================
-// スコア計算
-// ===============================
-function calcScore(ctx, modelSrc) {
-  const user = normalize(ctx.getImageData(0, 0, 300, 300));
-
-  const tmp = document.createElement("canvas");
-  tmp.width = 300;
-  tmp.height = 300;
-  const tctx = tmp.getContext("2d");
+// =====================
+// スコア計算（画像ロード保証）
+// =====================
+function calcScore(ctx, modelSrc, callback) {
+  const user = normalize(ctx.getImageData(0,0,300,300));
 
   const img = new Image();
-  img.src = modelSrc;
-  tctx.drawImage(img, 0, 0, 300, 300);
+  img.onload = () => {
+    const tmp = document.createElement("canvas");
+    tmp.width = 300;
+    tmp.height = 300;
+    const tctx = tmp.getContext("2d");
+    tctx.drawImage(img, 0, 0, 300, 300);
 
-  const model = normalize(tctx.getImageData(0, 0, 300, 300));
+    const model = normalize(tctx.getImageData(0,0,300,300));
 
-  let hit = 0;
-  let total = 0;
-
-  for (let i = 0; i < model.data.length; i += 4) {
-    if (model.data[i] === 0) {
-      total++;
-      if (user.data[i] === 0) hit++;
+    let hit = 0, total = 0;
+    for (let i = 0; i < model.data.length; i += 4) {
+      if (model.data[i] === 0) {
+        total++;
+        if (user.data[i] === 0) hit++;
+      }
     }
-  }
-
-  return Math.floor((hit / total) * 100);
+    callback(Math.floor(hit / total * 100));
+  };
+  img.onerror = () => {
+    alert("お手本画像が読み込めません。ファイル名を確認してください。");
+  };
+  img.src = modelSrc;
 }
 
-// ===============================
+// =====================
 // 判定＋ランク
-// ===============================
+// =====================
 function judge() {
-  const goScore = calcScore(goCtx, "model_go.png");
-  const kakuScore = calcScore(kakuCtx, "model_kaku.png");
-  const avg = Math.floor((goScore + kakuScore) / 2);
+  calcScore(goCtx, "model_go.png", goScore => {
+    calcScore(kakuCtx, "model_kaku.png", kakuScore => {
+      const avg = Math.floor((goScore + kakuScore) / 2);
 
-  let rank = "";
-  let color = "";
+      let rank, color;
+      if (avg >= 95) { rank = "S"; color = "gold"; }
+      else if (avg >= 80) { rank = "A"; color = "green"; }
+      else if (avg >= 65) { rank = "B"; color = "orange"; }
+      else { rank = "C"; color = "red"; }
 
-  if (avg >= 95) {
-    rank = "S";
-    color = "gold";
-  } else if (avg >= 80) {
-    rank = "A";
-    color = "green";
-  } else if (avg >= 65) {
-    rank = "B";
-    color = "orange";
-  } else {
-    rank = "C";
-    color = "red";
-  }
-
-  const result = document.getElementById("result");
-  result.innerHTML = `
-    合：${goScore}% ／ 格：${kakuScore}%<br>
-    平均：${avg}%<br>
-    ランク：<span style="font-size:36px;">${rank}</span>
-  `;
-  result.style.color = color;
+      const r = document.getElementById("result");
+      r.innerHTML = `
+        合：${goScore}% ／ 格：${kakuScore}%<br>
+        平均：${avg}%<br>
+        ランク：<span style="font-size:36px">${rank}</span>
+      `;
+      r.style.color = color;
+    });
+  });
 }
 
-// ===============================
+// =====================
 // リセット
-// ===============================
+// =====================
 function resetCanvas() {
-  goCtx.clearRect(0, 0, 300, 300);
-  kakuCtx.clearRect(0, 0, 300, 300);
+  goCtx.clearRect(0,0,300,300);
+  kakuCtx.clearRect(0,0,300,300);
   document.getElementById("result").textContent = "";
 }
 </script>
