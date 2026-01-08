@@ -5,10 +5,6 @@
 <title>合格を書いて競おう</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
 <style>
 html, body {
   margin: 0;
@@ -24,20 +20,17 @@ canvas, img {
   background: #fff;
   border: 2px solid #000;
 }
-canvas {
-  touch-action: none;
-}
+canvas { touch-action: none; }
 .row {
   display: flex;
   justify-content: center;
-  gap: 20px;
-  margin: 10px 0;
+  gap: 16px;
 }
 .hidden { display: none; }
 button, select, input {
   font-size: 16px;
-  padding: 6px;
-  margin: 4px;
+  margin: 6px;
+  padding: 6px 10px;
 }
 #result {
   font-size: 20px;
@@ -49,12 +42,7 @@ button, select, input {
 
 <body>
 
-<h1>「合格」を書いて競おう</h1>
-
-<div>
-  ニックネーム：
-  <input id="nickname" maxlength="10" placeholder="10文字以内">
-</div>
+<h1>「合格」を書いてみよう</h1>
 
 <div>
   難易度：
@@ -88,27 +76,16 @@ button, select, input {
 
 <div id="result"></div>
 
-<h2>🏆 ランキング TOP10</h2>
-<ul id="ranking"></ul>
-
 <script>
-/* ========= Firebase 設定（自分のものに差し替え） ========= */
-firebase.initializeApp({
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_DOMAIN",
-  projectId: "YOUR_PROJECT_ID"
-});
-const db = firebase.firestore();
-
-/* ========= Canvas 描画 ========= */
+/* ===== Canvas 描画 ===== */
 function setupCanvas(canvas) {
   const ctx = canvas.getContext("2d");
-  ctx.lineWidth = 6;
+  ctx.lineWidth = window.innerWidth < 600 ? 4 : 5;
   ctx.lineCap = "round";
   ctx.strokeStyle = "#000";
   let drawing = false;
 
-  function getPos(e) {
+  function pos(e) {
     const r = canvas.getBoundingClientRect();
     if (e.touches) {
       return {
@@ -122,14 +99,14 @@ function setupCanvas(canvas) {
   function start(e) {
     e.preventDefault();
     drawing = true;
-    const p = getPos(e);
+    const p = pos(e);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
   }
   function move(e) {
     e.preventDefault();
     if (!drawing) return;
-    const p = getPos(e);
+    const p = pos(e);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   }
@@ -152,24 +129,29 @@ function setupCanvas(canvas) {
 const goCtx = setupCanvas(document.getElementById("go"));
 const kakuCtx = setupCanvas(document.getElementById("kaku"));
 
-/* ========= 難易度設定 ========= */
-function getDifficulty() {
-  const d = difficulty.value;
-  if (d === "easy") return { overflow:30, thick:2.0, thickP:20 };
-  if (d === "hard") return { overflow:60, thick:1.5, thickP:40 };
-  return { overflow:40, thick:1.8, thickP:30 }; // normal
+/* ===== 難易度 ===== */
+function diff() {
+  if (difficulty.value === "easy")
+    return { overflow: 20, thick: 2.5, thickP: 15 };
+  if (difficulty.value === "hard")
+    return { overflow: 60, thick: 1.5, thickP: 40 };
+  return { overflow: 40, thick: 1.8, thickP: 30 };
 }
 
-/* ========= 採点 ========= */
+/* ===== 正規化（0点対策の核心） ===== */
 function normalize(img) {
-  for (let i=0;i<img.data.length;i+=4) {
-    const v = img.data[i];
-    const bw = v < 200 ? 0 : 255;
-    img.data[i]=img.data[i+1]=img.data[i+2]=bw;
+  for (let i = 0; i < img.data.length; i += 4) {
+    const r = img.data[i];
+    const g = img.data[i+1];
+    const b = img.data[i+2];
+    const brightness = (r + g + b) / 3;
+    const bw = brightness < 245 ? 0 : 255;
+    img.data[i] = img.data[i+1] = img.data[i+2] = bw;
   }
   return img;
 }
 
+/* ===== 採点 ===== */
 function calcScore(ctx, modelSrc, cb) {
   const user = normalize(ctx.getImageData(0,0,300,300));
   const img = new Image();
@@ -182,59 +164,41 @@ function calcScore(ctx, modelSrc, cb) {
 
     let hit=0, miss=0, mc=0, uc=0;
     for (let i=0;i<model.data.length;i+=4) {
-      const m = model.data[i]===0;
-      const u = user.data[i]===0;
+      const m = model.data[i] === 0;
+      const u = user.data[i] === 0;
       if (m) mc++;
       if (u) uc++;
-      if (m&&u) hit++;
-      if (!m&&u) miss++;
+      if (m && u) hit++;
+      if (!m && u) miss++;
     }
 
-    const s = getDifficulty();
+    if (mc === 0) {
+      cb(0);
+      return;
+    }
+
+    const s = diff();
     let score =
       hit/mc*100
       - miss/mc*s.overflow
       - Math.max(0, uc/mc - s.thick) * s.thickP;
 
-    cb(Math.max(0,Math.min(100,Math.floor(score))));
+    cb(Math.max(0, Math.min(100, Math.floor(score))));
   };
   img.src = modelSrc;
 }
 
-/* ========= 判定 ========= */
+/* ===== 判定 ===== */
 function judge() {
-  const name = nickname.value.trim();
-  if (!name) return alert("ニックネームを入力してください");
-
   calcScore(goCtx,"model_go.png",go=>{
     calcScore(kakuCtx,"model_kaku.png",ka=>{
-      const avg = Math.floor((go+ka)/2);
+      const avg = Math.floor((go + ka) / 2);
       const rank = avg>=95?"S":avg>=80?"A":avg>=65?"B":"C";
-
       result.innerHTML =
-        `合:${go}%　格:${ka}%<br>平均:${avg}%　ランク:${rank}`;
-
-      db.collection("scores").add({
-        name, score:avg, rank,
-        time: firebase.firestore.FieldValue.serverTimestamp()
-      });
+        `合：${go}%　格：${ka}%<br>平均：${avg}%　ランク：${rank}`;
     });
   });
 }
-
-/* ========= ランキング ========= */
-db.collection("scores")
-  .orderBy("score","desc")
-  .limit(10)
-  .onSnapshot(s=>{
-    ranking.innerHTML="";
-    s.forEach(d=>{
-      const x=d.data();
-      const li=document.createElement("li");
-      li.textContent=`${x.name}：${x.score}%（${x.rank}）`;
-      ranking.appendChild(li);
-    });
-  });
 
 function toStep2(){
   step1.classList.add("hidden");
