@@ -1,185 +1,202 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>合格チャレンジ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>100回クリックタイムアタック</title>
+
 <style>
-html,body{
+body{
   margin:0;
-  overflow:hidden;
-  font-family:sans-serif;
-  text-align:center;
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(180deg,#e8f6ff,#fff0f5);
+  font-family: system-ui, sans-serif;
 }
-canvas,img{
-  width:300px;
-  height:300px;
-  border:2px solid #000;
+.card{
+  width:min(720px,95%);
   background:#fff;
+  border-radius:20px;
+  padding:32px;
+  text-align:center;
+  box-shadow:0 15px 40px rgba(0,0,0,0.12);
+  user-select:none;
+  cursor:pointer;
 }
-canvas{touch-action:none;}
-.row{display:flex;justify-content:center;gap:10px;}
-.hidden{display:none;}
-#result{font-weight:bold;margin-top:8px;}
+h1{margin:0;font-size:32px;}
+.count{
+  font-size:72px;
+  font-weight:900;
+  color:#ff4081;
+  margin:10px 0;
+}
+.time{
+  font-size:28px;
+  font-weight:bold;
+  color:#2196f3;
+}
+input{
+  width:100%;
+  padding:12px;
+  margin:12px 0;
+  font-size:18px;
+  border-radius:10px;
+  border:1px solid #ccc;
+}
+button{
+  width:100%;
+  padding:22px;
+  font-size:28px;
+  border-radius:16px;
+  border:none;
+  background:#ff4081;
+  color:#fff;
+  font-weight:700;
+  cursor:pointer;
+}
+button:disabled{opacity:0.6;cursor:not-allowed;}
+.reset{
+  margin-top:10px;
+  background:#eee;
+  color:#333;
+  font-size:18px;
+}
+.ranking{
+  margin-top:20px;
+  font-size:14px;
+  color:#444;
+}
 </style>
 </head>
+
 <body>
+<div class="card" id="card">
+  <h1>100回クリック</h1>
 
-<h2>「合格」を書こう</h2>
+  <input id="nameInput" placeholder="ニックネームを入力">
 
-<select id="difficulty">
-  <option value="easy">EASY</option>
-  <option value="normal" selected>NORMAL</option>
-  <option value="hard">HARD</option>
-</select>
+  <div class="count" id="count">0 / 100</div>
+  <div class="time" id="time">0.0 秒</div>
 
-<div id="step1">
-  <div class="row">
-    <img src="model_go.png">
-    <img src="model_kaku.png">
-  </div>
-  <button onclick="start()">書く</button>
+  <button id="clickBtn">クリック！</button>
+  <button class="reset" id="resetBtn">リセット</button>
+
+  <div class="ranking" id="ranking"></div>
 </div>
 
-<div id="step2" class="hidden">
-  <div class="row">
-    <canvas id="go" width="300" height="300"></canvas>
-    <canvas id="kaku" width="300" height="300"></canvas>
-  </div>
-  <button onclick="judge()">判定</button>
-</div>
+<script type="module">
+/* ---------- Firebase ---------- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-<div id="result"></div>
+const firebaseConfig = {
+  apiKey: "AIzaSyDuvDzmbIigTcXYqxN1dkLDg793sUy3src",
+  authDomain: "go-kaku.firebaseapp.com",
+  projectId: "go-kaku",
+  storageBucket: "go-kaku.firebasestorage.app",
+  messagingSenderId: "373881843090",
+  appId: "1:373881843090:web:d30e6265d809034e62654b",
+  measurementId: "G-RWSGKGVCQY"
+};
 
-<script>
-/* ===== Canvas setup ===== */
-function setup(c){
-  const ctx=c.getContext("2d");
-  ctx.lineWidth=8;
-  ctx.lineCap="round";
-  ctx.strokeStyle="#000";
-  let d=false;
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-  function p(e){
-    const r=c.getBoundingClientRect();
-    const t=e.touches?e.touches[0]:e;
-    return {x:t.clientX-r.left,y:t.clientY-r.top};
+/* ---------- ゲーム ---------- */
+const MAX = 100;
+let count = 0;
+let startTime = null;
+let timer = null;
+
+const countEl = document.getElementById("count");
+const timeEl = document.getElementById("time");
+const clickBtn = document.getElementById("clickBtn");
+const resetBtn = document.getElementById("resetBtn");
+const card = document.getElementById("card");
+const rankingEl = document.getElementById("ranking");
+const nameInput = document.getElementById("nameInput");
+
+/* ニックネーム保存 */
+nameInput.value = localStorage.getItem("nickname") || "";
+nameInput.onchange = () => {
+  localStorage.setItem("nickname", nameInput.value);
+};
+
+/* タイマー */
+function startTimer(){
+  startTime = performance.now();
+  timer = setInterval(()=>{
+    const t = (performance.now()-startTime)/1000;
+    timeEl.textContent = t.toFixed(1) + " 秒";
+  },100);
+}
+
+/* クリック */
+async function doClick(){
+  if(count >= MAX) return;
+  if(!nameInput.value){
+    alert("ニックネームを入力してください");
+    return;
   }
-  function s(e){e.preventDefault();d=true;const q=p(e);ctx.beginPath();ctx.moveTo(q.x,q.y);}
-  function m(e){e.preventDefault();if(!d)return;const q=p(e);ctx.lineTo(q.x,q.y);ctx.stroke();}
-  function e(e){e.preventDefault();d=false;}
 
-  c.addEventListener("mousedown",s);
-  c.addEventListener("mousemove",m);
-  c.addEventListener("mouseup",e);
-  c.addEventListener("touchstart",s,{passive:false});
-  c.addEventListener("touchmove",m,{passive:false});
-  c.addEventListener("touchend",e,{passive:false});
-  return ctx;
-}
+  if(count === 0) startTimer();
+  count++;
+  countEl.textContent = `${count} / 100`;
 
-const goCtx=setup(go);
-const kaCtx=setup(kaku);
+  if(count === MAX){
+    clearInterval(timer);
+    const finalTime = ((performance.now()-startTime)/1000).toFixed(1);
+    timeEl.textContent = finalTime + " 秒";
+    clickBtn.disabled = true;
 
-/* ===== difficulty ===== */
-function radius(){
-  return difficulty.value==="easy"?8:
-         difficulty.value==="hard"?3:5;
-}
-
-/* ===== ink check ===== */
-function ink(img){
-  let c=0;
-  for(let i=0;i<img.data.length;i+=4){
-    if(img.data[i]<200) c++;
-  }
-  return c;
-}
-
-/* ===== scoring + overflow visualize ===== */
-function score(ctx,src,cb){
-  const u=ctx.getImageData(0,0,300,300);
-  if(ink(u)<400){ cb(0); return; }
-
-  const img=new Image();
-  img.onload=()=>{
-    const c=document.createElement("canvas");
-    c.width=c.height=300;
-    const t=c.getContext("2d");
-    t.drawImage(img,0,0,300,300);
-    const m=t.getImageData(0,0,300,300);
-
-    const r=radius();
-    let hit=0,total=0,overflow=0;
-
-    // お手本 → ユーザー（一致率）
-    for(let y=0;y<300;y+=2){
-      for(let x=0;x<300;x+=2){
-        const i=(y*300+x)*4;
-        if(m.data[i]<200){
-          total++;
-          let ok=false;
-          for(let dy=-r;dy<=r&&!ok;dy++){
-            for(let dx=-r;dx<=r;dx++){
-              const nx=x+dx,ny=y+dy;
-              if(nx<0||ny<0||nx>=300||ny>=300)continue;
-              const ni=(ny*300+nx)*4;
-              if(u.data[ni]<200){ok=true;}
-            }
-          }
-          if(ok) hit++;
-        }
-      }
-    }
-
-    // ユーザー → お手本（はみ出し）
-    for(let y=0;y<300;y+=2){
-      for(let x=0;x<300;x+=2){
-        const i=(y*300+x)*4;
-        if(u.data[i]<200){
-          let near=false;
-          for(let dy=-r;dy<=r&&!near;dy++){
-            for(let dx=-r;dx<=r;dx++){
-              const nx=x+dx,ny=y+dy;
-              if(nx<0||ny<0||nx>=300||ny>=300)continue;
-              const ni=(ny*300+nx)*4;
-              if(m.data[ni]<200){near=true;}
-            }
-          }
-          if(!near){
-            overflow++;
-            u.data[i]=255;      // 赤表示
-            u.data[i+1]=0;
-            u.data[i+2]=0;
-          }
-        }
-      }
-    }
-
-    ctx.putImageData(u,0,0);
-
-    const base = hit/total*100;
-    const penalty = overflow/total*50;
-    cb(Math.max(0,Math.floor(base-penalty)));
-  };
-  img.src=src;
-}
-
-/* ===== judge ===== */
-function judge(){
-  score(goCtx,"model_go.png",a=>{
-    score(kaCtx,"model_kaku.png",b=>{
-      const avg=Math.floor((a+b)/2);
-      const rank=avg>=95?"S":avg>=80?"A":avg>=65?"B":"C";
-      result.innerHTML=`合:${a}% 格:${b}%<br>平均:${avg}% ランク:${rank}`;
+    await addDoc(collection(db,"scores"),{
+      name: nameInput.value,
+      time: Number(finalTime),
+      created: serverTimestamp()
     });
-  });
+
+    loadRanking();
+  }
 }
 
-function start(){
-  step1.classList.add("hidden");
-  step2.classList.remove("hidden");
+/* ランキング */
+async function loadRanking(){
+  const q = query(
+    collection(db,"scores"),
+    orderBy("time"),
+    limit(5)
+  );
+  const snap = await getDocs(q);
+  let html = "<b>🏆 ランキング</b><br>";
+  snap.forEach((doc,i)=>{
+    const d = doc.data();
+    html += `${i+1}位：${d.name}（${d.time} 秒）<br>`;
+  });
+  rankingEl.innerHTML = html;
 }
+
+/* リセット */
+resetBtn.onclick = e=>{
+  e.stopPropagation();
+  count = 0;
+  startTime = null;
+  clearInterval(timer);
+  clickBtn.disabled = false;
+  countEl.textContent = "0 / 100";
+  timeEl.textContent = "0.0 秒";
+};
+
+/* どこクリックしても反応 */
+clickBtn.onclick = e=>{ e.stopPropagation(); doClick(); };
+card.onclick = e=>{
+  if(e.target === resetBtn || e.target === nameInput) return;
+  doClick();
+};
+
+loadRanking();
 </script>
 </body>
 </html>
