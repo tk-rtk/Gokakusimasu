@@ -2,19 +2,29 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!-- スクロール・ズーム完全防止 -->
+<meta name="viewport"
+  content="width=device-width,
+           initial-scale=1,
+           maximum-scale=1,
+           user-scalable=no">
+
 <title>100回クリックチャレンジ！！</title>
 
 <style>
 body{
   margin:0;
   height:100vh;
+  overflow:hidden;            /* スクロール禁止 */
+  overscroll-behavior:none;   /* 引っ張り防止 */
   display:flex;
   align-items:center;
   justify-content:center;
   background:linear-gradient(180deg,#e8f6ff,#fff0f5);
   font-family: system-ui, sans-serif;
 }
+
 .card{
   width:min(720px,95%);
   background:#fff;
@@ -24,28 +34,34 @@ body{
   box-shadow:0 15px 40px rgba(0,0,0,0.12);
   user-select:none;
   cursor:pointer;
+  touch-action:manipulation;  /* ダブルタップズーム無効 */
 }
+
 h1{
   margin:0;
   font-size:32px;
 }
+
 .desc{
   margin:12px 0 18px;
   font-size:15px;
   color:#555;
   line-height:1.6;
 }
+
 .count{
   font-size:72px;
   font-weight:900;
   color:#ff4081;
   margin:10px 0;
 }
+
 .time{
   font-size:28px;
   font-weight:bold;
   color:#2196f3;
 }
+
 input{
   width:100%;
   padding:12px;
@@ -54,6 +70,7 @@ input{
   border-radius:10px;
   border:1px solid #ccc;
 }
+
 button{
   width:100%;
   padding:22px;
@@ -66,16 +83,19 @@ button{
   cursor:pointer;
   margin-top:18px;
 }
+
 button:disabled{
   opacity:0.6;
   cursor:not-allowed;
 }
+
 .reset{
   margin-top:28px;
   background:#eee;
   color:#333;
   font-size:18px;
 }
+
 .ranking{
   margin-top:20px;
   font-size:14px;
@@ -127,7 +147,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* ゲーム */
+/* ゲーム設定 */
 const MAX = 100;
 let count = 0;
 let startTime = null;
@@ -165,7 +185,6 @@ async function doClick(){
   }
 
   if(count === 0) startTimer();
-
   count++;
   countEl.textContent = `${count} / 100`;
 
