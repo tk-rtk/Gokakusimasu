@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>100回クリックタイムアタック</title>
+<title>100回クリックチャレンジ！！</title>
 
 <style>
 body{
@@ -25,7 +25,16 @@ body{
   user-select:none;
   cursor:pointer;
 }
-h1{margin:0;font-size:32px;}
+h1{
+  margin:0;
+  font-size:32px;
+}
+.desc{
+  margin:12px 0 18px;
+  font-size:15px;
+  color:#555;
+  line-height:1.6;
+}
 .count{
   font-size:72px;
   font-weight:900;
@@ -57,7 +66,10 @@ button{
   cursor:pointer;
   margin-top:18px;
 }
-button:disabled{opacity:0.6;cursor:not-allowed;}
+button:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
+}
 .reset{
   margin-top:28px;
   background:#eee;
@@ -74,7 +86,14 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
 
 <body>
 <div class="card" id="card">
-  <h1>100回クリック</h1>
+  <h1>100回クリックチャレンジ！！</h1>
+
+  <div class="desc">
+    100回クリックチャレンジ！<br>
+    素早くクリックボタンをクリックして、世界中のプレイヤーと
+    クリックスピードを競い合おう！<br>
+    勉強の息抜きに、レッツトライ！
+  </div>
 
   <input id="nameInput" placeholder="ニックネームを入力">
 
@@ -89,9 +108,12 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp }
-  from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+import {
+  getFirestore, collection, addDoc,
+  getDocs, query, orderBy, limit, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
+/* Firebase設定 */
 const firebaseConfig = {
   apiKey: "AIzaSyDuvDzmbIigTcXYqxN1dkLDg793sUy3src",
   authDomain: "go-kaku.firebaseapp.com",
@@ -105,6 +127,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* ゲーム */
 const MAX = 100;
 let count = 0;
 let startTime = null;
@@ -118,11 +141,13 @@ const card = document.getElementById("card");
 const rankingEl = document.getElementById("ranking");
 const nameInput = document.getElementById("nameInput");
 
+/* ニックネーム保存 */
 nameInput.value = localStorage.getItem("nickname") || "";
 nameInput.onchange = () => {
   localStorage.setItem("nickname", nameInput.value);
 };
 
+/* タイマー */
 function startTimer(){
   startTime = performance.now();
   timer = setInterval(()=>{
@@ -131,13 +156,16 @@ function startTimer(){
   },100);
 }
 
+/* クリック処理 */
 async function doClick(){
   if(count >= MAX) return;
   if(!nameInput.value){
     alert("ニックネームを入力してください");
     return;
   }
+
   if(count === 0) startTimer();
+
   count++;
   countEl.textContent = `${count} / 100`;
 
@@ -153,21 +181,46 @@ async function doClick(){
       created: serverTimestamp()
     });
 
-    loadRanking();
+    loadRanking(Number(finalTime));
   }
 }
 
-async function loadRanking(){
-  const q = query(collection(db,"scores"), orderBy("time"), limit(5));
-  const snap = await getDocs(q);
-  let html = "<b>🏆 ランキング</b><br>";
-  snap.forEach((doc,i)=>{
+/* ランキング表示（上位10＋自分の順位） */
+async function loadRanking(myTime){
+  const topQuery = query(
+    collection(db,"scores"),
+    orderBy("time"),
+    limit(10)
+  );
+  const topSnap = await getDocs(topQuery);
+
+  let html = "<b>🏆 ランキング（上位10人）</b><br>";
+  let rank = 1;
+
+  topSnap.forEach(doc=>{
     const d = doc.data();
-    html += `${i+1}位：${d.name}（${d.time} 秒）<br>`;
+    html += `${rank}位：${d.name}（${d.time} 秒）<br>`;
+    rank++;
   });
+
+  const allQuery = query(
+    collection(db,"scores"),
+    orderBy("time")
+  );
+  const allSnap = await getDocs(allQuery);
+
+  const allTimes = [];
+  allSnap.forEach(doc=>{
+    allTimes.push(doc.data().time);
+  });
+
+  const myRank = allTimes.findIndex(t => t === myTime) + 1;
+
+  html += `<br><b>あなたの順位：${myRank}位 / ${allTimes.length}人</b>`;
   rankingEl.innerHTML = html;
 }
 
+/* リセット */
 resetBtn.onclick = e=>{
   e.stopPropagation();
   count = 0;
@@ -178,13 +231,15 @@ resetBtn.onclick = e=>{
   timeEl.textContent = "0.0 秒";
 };
 
+/* どこをクリックしてもOK */
 clickBtn.onclick = e=>{ e.stopPropagation(); doClick(); };
 card.onclick = e=>{
   if(e.target === resetBtn || e.target === nameInput) return;
   doClick();
 };
 
-loadRanking();
+/* 初期ランキング */
+loadRanking(0);
 </script>
 </body>
 </html>
